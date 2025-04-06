@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+
+
+# VSCode 등 IDE 설정
+*.vscode/
+*.idea/
+
+
+# GCP Credentials
+credentials/
+*.json  # 혹시 모를 GCP 키 실수로 커밋 방지
+
+# Uploaded files (임시 이미지 저장소)
+temp/
+
+# Docker artifacts
+*.log
+*.db
+*.pid
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+.env
+
+img/
