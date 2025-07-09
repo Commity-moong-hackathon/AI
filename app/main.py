@@ -1,22 +1,35 @@
 import app.config
-from fastapi import FastAPI, UploadFile, File
-from app.ocr_utils import process_student_card
+from fastapi import FastAPI, UploadFile, File, Form
+from app.ocr_utils import extract_text
+from app.parser.factory import parse_by_type 
 import uuid
 import os
 
-app = FastAPI()
+app = FastAPI(title ='OCR Uplaod API', description='양식별 ocr 추출')
 
-UPLOAD_DIR = "temp"
 
-@app.post("/upload-student-card")
-async def upload_student_card(file: UploadFile = File(...)):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+@app.post("/ocr/upload")
+async def upload_ocr_img(
+    file: UploadFile = File(...),
+    form_type: str = Form(...)
+):
+    try:
+        temp_path = f"temp_{file.filename}"
+        with open(temp_path, "wb") as f:
+            f.write(await file.read())
 
-    filename = f"{uuid.uuid4()}.jpeg"
-    file_path = os.path.join(UPLOAD_DIR, filename)
+        from app.ocr_utils import extract_text
+        text = extract_text(temp_path)
 
-    with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
+        from app.parser.factory import parse_by_type
+        parsed = parse_by_type(form_type, text)
 
-    result = process_student_card(file_path)
-    return result
+        os.remove(temp_path)
+
+        return {"parsed": parsed}
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }

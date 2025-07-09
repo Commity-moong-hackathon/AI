@@ -1,75 +1,36 @@
-import app.config
+import os
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "credentials/gcp.json"
 
 from google.cloud import vision
+from google.cloud.vision_v1 import types
 from PIL import Image
-import io
-import os
-import re
 
-# 이미지 리사이즈
 def resize_image(input_path, output_path, max_width=2000):
     with Image.open(input_path) as img:
+        if img.mode == "RGBA":
+            img = img.convert("RGB")
+
         if img.width > max_width:
             ratio = max_width / float(img.width)
-            new_height = int((float(img.height) * float(ratio)))
+            new_height = int(float(img.height) * ratio)
             img = img.resize((max_width, new_height), Image.LANCZOS)
         img.save(output_path, format='JPEG', optimize=True)
 
-# OCR + 파싱
-def process_student_card(image_path):
-    resized_path = image_path.replace(".jpg", "_resized.jpg")
+
+def extract_text(image_path: str) -> str:
+    resized_path = "resized_" + os.path.basename(image_path)
     resize_image(image_path, resized_path)
 
     client = vision.ImageAnnotatorClient()
-    with io.open(resized_path, "rb") as image_file:
-        content = image_file.read()
+    with open(resized_path, "rb") as img_file:
+        content = img_file.read()
 
-    image = vision.Image(content=content)
-    response = client.text_detection(image=image)
-    texts = response.text_annotations
+    image = types.Image(content=content)
+    response = client.document_text_detection(image=image)
 
-    full_text = texts[0].description if texts else ""
+    os.remove(resized_path)
 
-    return extract_student_info(full_text)
+    if response.error.message:
+        raise Exception(f"Vision API Error: {response.error.message}")
 
-# 텍스트 정보 
-def extract_student_info(text):
-    lines = text.strip().split("\n")
-
-    info = {
-        "univ": None,
-        "major": None,
-        "name": None,
-        "student_number": None
-    }
-
-    for line in lines:
-        if re.fullmatch(r'\d{7,10}', line):
-            info["student_number"] = line
-
-        elif "학교" in line:
-            tokens = line.split()
-            for token in tokens:
-                if token.endswith("대학교총장"):
-                    info["univ"] = token.replace("총장", "")
-                    break
-                elif token.endswith("대학교"):
-                    info["univ"] = token
-                    break
-
-        elif "과" in line:
-            tokens = line.split()
-            for token in tokens:
-                if (
-                    token.endswith("학과")
-                    and "학부" not in token
-                    and "/" not in token
-                    and all('\uac00' <= c <= '\ud7a3' for c in token)
-                ):
-                    info["major"] = token
-                    break
-                
-        elif len(line.strip()) == 3 and all('\uac00' <= c <= '\ud7a3' for c in line.strip()):
-            info["name"] = line.strip()
-
-    return info
+    return response.full_text_annotation.text if response.full_text_annotation else ""
